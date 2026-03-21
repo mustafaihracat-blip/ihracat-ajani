@@ -199,8 +199,7 @@ Rakiplere karşı kazanmak için 5 somut öneri.
 def run_module(client, prompt):
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=1000,
-        tools=[{"type": "web_search_20250305", "name": "web_search"}],
+        max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
     return "".join(b.text for b in response.content if hasattr(b, "text"))
