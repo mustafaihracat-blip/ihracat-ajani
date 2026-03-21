@@ -157,6 +157,7 @@ def wordpress_yayinla(yazi, seo_kelime):
         "slug":           yazi["slug"],
         "comment_status": "closed",
         "ping_status":    "closed",
+        "template":       "elementor_header_footer",
         "meta": {
             "rank_math_title":         f"{yazi['wp_baslik']} | Kurs Değil Kariyer",
             "rank_math_description":   yazi["meta_description"],
