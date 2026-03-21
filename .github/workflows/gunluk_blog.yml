@@ -1,1 +1,33 @@
+name: 📝 Günlük Blog Yazısı
 
+on:
+  schedule:
+    # Her gün sabah 09:00 Türkiye saati (UTC+3 = UTC 06:00)
+    - cron: '0 6 * * *'
+  
+  # Elle de çalıştırabilirsin (GitHub → Actions → Run workflow)
+  workflow_dispatch:
+
+jobs:
+  blog-yayinla:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Kodu İndir
+        uses: actions/checkout@v4
+
+      - name: 🐍 Python Kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Paketleri Yükle
+        run: pip install requests
+
+      - name: 🚀 Blog Ajanını Çalıştır
+        env:
+          WP_URL:            ${{ secrets.WP_URL }}
+          WP_USER:           ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD:   ${{ secrets.WP_APP_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python blog_ajani.py
