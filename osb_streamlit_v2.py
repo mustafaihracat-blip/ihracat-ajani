@@ -96,21 +96,21 @@ if st.session_state.adim == 1:
 
             r = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1000,
+                max_tokens=2000,
                 messages=[{"role": "user", "content": f"""
-{sehir_input} şehrindeki TÜM Organize Sanayi Bölgelerini listele.
-Sadece gerçek ve doğrulanmış OSB'leri yaz.
+{sehir_input} iline bağlı TÜM Organize Sanayi Bölgelerini (OSB) listele.
+İlçelerdekiler dahil HEPSİNİ yaz. Hiçbirini atlama.
 
-JSON:
+Sadece JSON döndür, başka hiçbir şey yazma:
 {{
   "osblar": [
     {{
       "id": 1,
-      "ad": "OSB adı",
+      "ad": "OSB tam adı",
       "website": "website veya null",
       "firma_sayisi": 150,
       "sektorler": ["tekstil", "metal"],
-      "adres": "ilçe/semt"
+      "adres": "ilçe adı"
     }}
   ]
 }}
@@ -142,14 +142,16 @@ elif st.session_state.adim == 2:
     for osb in st.session_state.osblar:
         col1, col2 = st.columns([4, 1])
         with col1:
+            sektorler = ', '.join(osb.get('sektorler', [])[:3])
+            website = osb.get('website', '')
+            web_html = f"&nbsp;|&nbsp; 🌐 {website}" if website else ''
             st.markdown(f"""
             <div class="osb-card">
                 <strong style="font-size:15px; color:#1F4E79">{osb['ad']}</strong><br>
                 <span style="font-size:12px; color:#666">
-                    📍 {osb.get('adres', '-')} &nbsp;|&nbsp; 
+                    📍 {osb.get('adres', '-')} &nbsp;|&nbsp;
                     🏭 ~{osb.get('firma_sayisi', '?')} firma &nbsp;|&nbsp;
-                    🔧 {', '.join(osb.get('sektorler', [])[:3])}
-                    {f"&nbsp;|&nbsp; 🌐 {osb.get('website', '')}" if osb.get('website') else ''}
+                    🔧 {sektorler}{web_html}
                 </span>
             </div>
             """, unsafe_allow_html=True)
