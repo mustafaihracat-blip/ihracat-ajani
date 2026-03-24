@@ -9,39 +9,38 @@ from datetime import datetime
 
 st.set_page_config(page_title="📧 E-Posta Yöneticisi", page_icon="📧", layout="centered")
 
-# ========== SIDEBAR - SMTP ==========
+# ========== SIDEBAR ==========
 with st.sidebar:
     st.header("⚙️ SMTP Ayarları")
     smtp_server = st.text_input("SMTP Sunucu", value="mail.kursdegilkariyer.online")
     smtp_port   = st.number_input("Port", value=587, step=1)
     email_user  = st.text_input("Gönderen E-posta", value="bilgi@kursdegilkariyer.online")
     email_pass  = st.text_input("Şifre", value="Mustafa1234", type="password")
-    aralik      = st.number_input("E-postalar arası bekleme (sn)", value=240, step=10,
-                                   help="Test: 5 sn | Gerçek: 240 sn (4 dk)")
-    st.markdown("---")
+    aralik      = st.number_input("Bekleme (sn)", value=240, step=10, help="Test: 5 sn | Gerçek: 240 sn")
     st.caption("💡 Test için beklemeyi 5 sn yap")
 
-# ========== ADIM GÖSTERGESI ==========
-os.makedirs("kampanyalar", exist_ok=True)
-os.makedirs("sablonlar", exist_ok=True)
-os.makedirs("listeler", exist_ok=True)
+# ========== KLASÖRLER ==========
+for klasor in ["sablonlar", "listeler"]:
+    os.makedirs(klasor, exist_ok=True)
 
+# ========== SESSION STATE ==========
 if "adim" not in st.session_state:
     st.session_state.adim = 1
 if "kampanya" not in st.session_state:
     st.session_state.kampanya = {}
 
+# ========== ADIM GÖSTERGESI ==========
 def adim_goster():
     adimlar = ["1️⃣ Tanımla", "2️⃣ Şablon", "3️⃣ Alıcılar", "4️⃣ Gönder"]
     cols = st.columns(4)
     for i, (col, ad) in enumerate(zip(cols, adimlar), 1):
         with col:
             if i == st.session_state.adim:
-                st.markdown(f"<div style=\"background:#2563eb;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold;\">{ad}</div>", unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#2563eb;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold;">{ad}</div>', unsafe_allow_html=True)
             elif i < st.session_state.adim:
-                st.markdown(f"<div style=\"background:#bbf7d0;color:#166534;padding:10px;border-radius:8px;text-align:center;\">✅ {ad}</div>", unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#bbf7d0;color:#166534;padding:10px;border-radius:8px;text-align:center;">✅ {ad}</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f"<div style=\"background:#f1f5f9;color:#94a3b8;padding:10px;border-radius:8px;text-align:center;\">{ad}</div>", unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#f1f5f9;color:#94a3b8;padding:10px;border-radius:8px;text-align:center;">{ad}</div>', unsafe_allow_html=True)
 
 adim_goster()
 st.markdown("---")
@@ -49,25 +48,13 @@ st.markdown("---")
 # ========== ADIM 1: TANIMI ==========
 if st.session_state.adim == 1:
     st.subheader("1️⃣ Kampanyayı Tanımla")
-    
-    kampanya_adi = st.text_input("📌 Kampanya Adı", 
-                                  value=st.session_state.kampanya.get("ad", ""),
-                                  placeholder="Örn: Dis_Ticaret_Mart_2025")
-    konu = st.text_input("✉️ E-posta Konusu",
-                          value=st.session_state.kampanya.get("konu", ""),
-                          placeholder="Örn: 🎓 Dış Ticaret Eğitim Programı")
-    gonderen_ad = st.text_input("👤 Gönderen Adı",
-                                 value=st.session_state.kampanya.get("gonderen_ad", "Kurs Değil Kariyer"),
-                                 placeholder="Örn: Mustafa Hoca")
+    kampanya_adi = st.text_input("📌 Kampanya Adı", value=st.session_state.kampanya.get("ad",""), placeholder="Örn: Mart_2025")
+    konu         = st.text_input("✉️ E-posta Konusu", value=st.session_state.kampanya.get("konu",""), placeholder="Örn: 🎓 Dış Ticaret Eğitim Programı")
+    gonderen_ad  = st.text_input("👤 Gönderen Adı", value=st.session_state.kampanya.get("gonderen_ad","Kurs Değil Kariyer"))
 
     if st.button("İleri ➡️", type="primary", use_container_width=True):
         if kampanya_adi and konu:
-            st.session_state.kampanya = {
-                "ad": kampanya_adi,
-                "konu": konu,
-                "gonderen_ad": gonderen_ad
-            }
-            os.makedirs(f"kampanyalar/{kampanya_adi}", exist_ok=True)
+            st.session_state.kampanya = {"ad": kampanya_adi, "konu": konu, "gonderen_ad": gonderen_ad}
             st.session_state.adim = 2
             st.rerun()
         else:
@@ -77,113 +64,105 @@ if st.session_state.adim == 1:
 elif st.session_state.adim == 2:
     st.subheader("2️⃣ E-Posta Şablonu Seç")
 
-    # Mevcut şablonlar
     mevcut = [f for f in os.listdir("sablonlar") if f.endswith(".html")]
-    
-    secim = st.radio("Şablon kaynağı:", 
-                      ["📁 Mevcut şablon kullan", "⬆️ Yeni şablon yükle"],
-                      horizontal=True)
+    secim  = st.radio("Şablon kaynağı:", ["📁 Mevcut şablon kullan", "⬆️ Yeni şablon yükle"], horizontal=True)
 
     if secim == "📁 Mevcut şablon kullan":
         if mevcut:
-            secili_sablon = st.selectbox("Şablon seç:", mevcut)
-            sablon_yolu = f"sablonlar/{secili_sablon}"
-            with open(sablon_yolu, "r", encoding="utf-8") as f:
-                html_onizleme = f.read()
-            with st.expander("👁️ Şablonu Önizle"):
-                st.components.v1.html(html_onizleme, height=500, scrolling=True)
-            st.session_state.kampanya["sablon"] = sablon_yolu
+            secili = st.selectbox("Şablon seç:", mevcut)
+            yol = f"sablonlar/{secili}"
+            with open(yol, "r", encoding="utf-8") as f:
+                html = f.read()
+            with st.expander("👁️ Önizle"):
+                st.components.v1.html(html, height=500, scrolling=True)
+            st.session_state.kampanya["sablon"] = yol
         else:
-            st.warning("⚠️ Kayıtlı şablon yok. Yeni şablon yükle!")
-
+            st.warning("⚠️ Kayıtlı şablon yok, yeni yükle!")
     else:
         sablon_file = st.file_uploader("HTML Şablon Yükle", type=["html"])
-        sablon_adi  = st.text_input("Şablon adı", placeholder="Örn: dis_ticaret_sablon.html")
-        
+        sablon_adi  = st.text_input("Şablon adı", placeholder="Örn: dis_ticaret.html")
         if sablon_file and sablon_adi:
             if not sablon_adi.endswith(".html"):
                 sablon_adi += ".html"
             icerik = sablon_file.read().decode("utf-8")
-            sablon_yolu = f"sablonlar/{sablon_adi}"
-            with open(sablon_yolu, "w", encoding="utf-8") as f:
+            yol = f"sablonlar/{sablon_adi}"
+            with open(yol, "w", encoding="utf-8") as f:
                 f.write(icerik)
             st.success(f"✅ '{sablon_adi}' kaydedildi!")
             with st.expander("👁️ Önizle"):
                 st.components.v1.html(icerik, height=500, scrolling=True)
-            st.session_state.kampanya["sablon"] = sablon_yolu
+            st.session_state.kampanya["sablon"] = yol
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("⬅️ Geri", use_container_width=True):
-            st.session_state.adim = 1
-            st.rerun()
+            st.session_state.adim = 1; st.rerun()
     with col2:
         if st.button("İleri ➡️", type="primary", use_container_width=True):
             if "sablon" in st.session_state.kampanya:
-                st.session_state.adim = 3
-                st.rerun()
+                st.session_state.adim = 3; st.rerun()
             else:
-                st.error("❌ Önce bir şablon seç veya yükle!")
+                st.error("❌ Önce şablon seç!")
 
 # ========== ADIM 3: ALİCİLAR ==========
 elif st.session_state.adim == 3:
     st.subheader("3️⃣ Alıcı Listesi Seç")
 
     mevcut_listeler = [f for f in os.listdir("listeler") if f.endswith(".xlsx")]
-
-    secim = st.radio("Liste kaynağı:",
-                      ["📁 Mevcut liste kullan", "⬆️ Yeni liste yükle"],
-                      horizontal=True)
+    secim = st.radio("Liste kaynağı:", ["📁 Mevcut liste kullan", "⬆️ Yeni liste yükle"], horizontal=True)
 
     if secim == "📁 Mevcut liste kullan":
         if mevcut_listeler:
-            secili_liste = st.selectbox("Liste seç:", mevcut_listeler)
-            liste_yolu = f"listeler/{secili_liste}"
-            df = pd.read_excel(liste_yolu)
-            st.success(f"✅ {len(df)} alıcı")
+            secili = st.selectbox("Liste seç:", mevcut_listeler)
+            yol = f"listeler/{secili}"
+            df  = pd.read_excel(yol)
+            st.success(f"✅ {len(df)} alıcı | Sütunlar: {list(df.columns)}")
             st.dataframe(df, use_container_width=True, height=200)
-            st.session_state.kampanya["liste"] = liste_yolu
+            st.session_state.kampanya["liste"] = yol
         else:
-            st.warning("⚠️ Kayıtlı liste yok. Yeni liste yükle!")
+            st.warning("⚠️ Kayıtlı liste yok, yeni yükle!")
     else:
         liste_file = st.file_uploader("Excel Listesi (.xlsx)", type=["xlsx"])
         liste_adi  = st.text_input("Liste adı", placeholder="Örn: mart_listesi")
-
         if liste_file and liste_adi:
             if not liste_adi.endswith(".xlsx"):
                 liste_adi += ".xlsx"
-            df_upload = pd.read_excel(liste_file)
-            liste_yolu = f"listeler/{liste_adi}"
-            df_upload.to_excel(liste_yolu, index=False)
-            st.success(f"✅ {len(df_upload)} alıcı kaydedildi!")
-            st.dataframe(df_upload, use_container_width=True, height=200)
-            st.session_state.kampanya["liste"] = liste_yolu
+            df_u = pd.read_excel(liste_file)
+            yol  = f"listeler/{liste_adi}"
+            df_u.to_excel(yol, index=False)
+            st.success(f"✅ {len(df_u)} alıcı kaydedildi! Sütunlar: {list(df_u.columns)}")
+            st.dataframe(df_u, use_container_width=True, height=200)
+            st.session_state.kampanya["liste"] = yol
 
-        # Boş şablon indir
-        ornek = pd.DataFrame({"Alıcı E-posta": ["ali@mail.com", "veli@mail.com"]})
-        st.download_button("📥 Boş Excel Şablonu İndir",
-                           ornek.to_csv(index=False).encode("utf-8"),
-                           "alici_sablonu.csv", "text/csv")
+        ornek = pd.DataFrame({"E-posta": ["ali@mail.com", "veli@mail.com"]})
+        st.download_button("📥 Boş Şablon İndir", ornek.to_csv(index=False).encode("utf-8"), "liste.csv", "text/csv")
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("⬅️ Geri", use_container_width=True):
-            st.session_state.adim = 2
-            st.rerun()
+            st.session_state.adim = 2; st.rerun()
     with col2:
         if st.button("İleri ➡️", type="primary", use_container_width=True):
             if "liste" in st.session_state.kampanya:
-                st.session_state.adim = 4
-                st.rerun()
+                st.session_state.adim = 4; st.rerun()
             else:
-                st.error("❌ Önce bir liste seç veya yükle!")
+                st.error("❌ Önce liste seç!")
 
 # ========== ADIM 4: GÖNDER ==========
 elif st.session_state.adim == 4:
     st.subheader("4️⃣ Özet & Gönder")
 
-    k = st.session_state.kampanya
+    k  = st.session_state.kampanya
     df = pd.read_excel(k["liste"])
+
+    # E-posta sütununu otomatik bul
+    email_sutun = None
+    for col in df.columns:
+        if any(k2 in col.lower() for k2 in ["posta", "mail", "email"]):
+            email_sutun = col
+            break
+    if email_sutun is None:
+        email_sutun = df.columns[0]  # Bulamazsa ilk sütunu kullan
 
     col1, col2 = st.columns(2)
     with col1:
@@ -193,16 +172,17 @@ elif st.session_state.adim == 4:
     with col2:
         st.info(f"🎨 **Şablon:** {os.path.basename(k['sablon'])}")
         st.info(f"📋 **Liste:** {os.path.basename(k['liste'])}")
-        st.info(f"📨 **Toplam Alıcı:** {len(df)}")
+        st.info(f"📨 **Alıcı:** {len(df)} kişi → '{email_sutun}' sütunu")
 
     sure = (len(df) * int(aralik)) // 60
-    st.warning(f"⏱️ Tahmini süre: **~{sure} dakika** ({len(df)} e-posta × {aralik} sn)")
+    st.warning(f"⏱️ Tahmini süre: **~{sure} dakika**")
+
+    konu_goster = st.text_input("✉️ Konu (düzenle):", value=k["konu"])
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("⬅️ Geri", use_container_width=True):
-            st.session_state.adim = 3
-            st.rerun()
+            st.session_state.adim = 3; st.rerun()
     with col2:
         gonder = st.button("🚀 GÖNDERMEYE BAŞLA", type="primary", use_container_width=True)
 
@@ -213,11 +193,11 @@ elif st.session_state.adim == 4:
         progress_bar = st.progress(0)
         status_box   = st.empty()
         log_box      = st.empty()
-        logs = []
+        logs         = []
         basarili = hatali = 0
 
         for i, satir in df.iterrows():
-            alici = satir["Alıcı E-posta"]
+            alici = str(satir[email_sutun]).strip()
             html  = html_sablon.replace("{{AD_SOYAD}}", "Yetkili")
             html  = html.replace("Sayın <strong>Yetkili</strong>", "Sayın Yetkili")
 
@@ -226,7 +206,7 @@ elif st.session_state.adim == 4:
                 msg = MIMEMultipart("alternative")
                 msg["From"]    = f"{k['gonderen_ad']} <{email_user}>"
                 msg["To"]      = alici
-                msg["Subject"] = k["konu"]
+                msg["Subject"] = konu_goster
                 msg.attach(MIMEText("HTML e-posta istemcisi kullanın.", "plain", "utf-8"))
                 msg.attach(MIMEText(html, "html", "utf-8"))
 
@@ -257,7 +237,7 @@ elif st.session_state.adim == 4:
             st.warning(f"⚠️ {basarili} başarılı | {hatali} hatalı")
         st.code("\n".join(logs))
 
-        if st.button("🔄 Yeni Kampanya Başlat"):
+        if st.button("🔄 Yeni Kampanya"):
             st.session_state.adim = 1
             st.session_state.kampanya = {}
             st.rerun()
