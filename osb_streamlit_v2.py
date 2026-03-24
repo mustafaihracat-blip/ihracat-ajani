@@ -2,11 +2,9 @@ import streamlit as st
 import anthropic
 import openpyxl
 import json
-import time
 import io
 import requests
 from bs4 import BeautifulSoup
-import urllib.parse
 import re
 
 st.set_page_config(
@@ -38,19 +36,106 @@ for key, val in [('adim',1),('sehir',''),('osblar',[]),('secili_osb',None),('tum
 
 def extract_contact(text):
     email = re.search(r'[\w\.\-]+@[\w\.\-]+\.\w{2,}', text)
-    tel = re.search(r'0[\s\-\(\)]?\d{3}[\s\-\(\)]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', text)
+    tel = re.search(r'(\+90[\s\-]?|0)[\s\-\(\)]?([2-5]\d{2})[\s\-\(\)]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})', text)
     web = re.search(r'https?://[^\s<>"]+|www\.[^\s<>"]+', text)
+    # WhatsApp: wa.me/90XXXXXXXXXX veya "whatsapp" yakınında geçen numara
+    wa = re.search(r'wa\.me/(\d+)', text)
     return {
         'email': email.group() if email else None,
-        'telefon': tel.group().strip() if tel else None,
-        'website': web.group() if web else None
+        'telefon': tel.group(0).strip() if tel else None,
+        'website': web.group() if web else None,
+        'whatsapp': wa.group(1) if wa else None,
     }
 
 
-def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=50):
+def iletisim_sayfasindan_cek(website):
+    """Firmanın sayfalarından gerçek telefon, email ve whatsapp çeker"""
+    if not website:
+        return {}
+    if not website.startswith('http'):
+        website = 'https://' + website
+
+    iletisim_yollari = ['', '/iletisim', '/contact', '/iletisim.html',
+                        '/contact.html', '/hakkimizda', '/about', '/tr/iletisim']
+    telefon = None
+    email = None
+    whatsapp = None
+
+    for yol in iletisim_yollari:
+        try:
+            url = website.rstrip('/') + yol
+            r = requests.get(url, headers=HEADERS, timeout=6)
+            if r.status_code != 200:
+                continue
+            soup = BeautifulSoup(r.text, 'html.parser')
+            text = soup.get_text(separator=' ')
+            html = r.text
+
+            # Telefon - Türkiye formatı
+            if not telefon:
+                tel_match = re.search(
+                    r'(\+90[\s\-]?|0)[\s\-\(\)]?([2-5]\d{2})[\s\-\(\)]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})',
+                    text
+                )
+                if tel_match:
+                    telefon = re.sub(r'\s+', ' ', tel_match.group(0)).strip()
+
+            # Email
+            if not email:
+                email_match = re.search(
+                    r'[\w\.\-]+@[\w\.\-]+\.(com|net|org|com\.tr|org\.tr|net\.tr|edu\.tr)',
+                    text
+                )
+                if email_match:
+                    email = email_match.group(0)
+
+            # WhatsApp - wa.me linki
+            if not whatsapp:
+                wa_match = re.search(r'wa\.me/(\d+)', html)
+                if wa_match:
+                    num = wa_match.group(1)
+                    # Türkiye kodu varsa düzenle
+                    if num.startswith('90'):
+                        whatsapp = '+' + num
+                    else:
+                        whatsapp = '+90' + num
+
+            # WhatsApp - href="whatsapp://..." veya data-phone ile
+            if not whatsapp:
+                wa_href = re.search(r'whatsapp://send\?phone=([\d\+]+)', html)
+                if wa_href:
+                    whatsapp = wa_href.group(1)
+
+            # WhatsApp - "whatsapp" kelimesinin yanındaki numara
+            if not whatsapp:
+                wa_text = re.search(
+                    r'(?i)whatsapp[^\d]{0,20}(\+?90[\s\-]?[\d\s\-]{10,14})',
+                    text
+                )
+                if wa_text:
+                    whatsapp = re.sub(r'\s+', '', wa_text.group(1))
+
+            if telefon and email and whatsapp:
+                break
+
+        except:
+            continue
+
+    result = {}
+    if telefon:
+        result['telefon'] = telefon
+    if email:
+        result['email'] = email
+    if whatsapp:
+        result['whatsapp'] = whatsapp
+    return result
+
+
+def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=100):
     firmalar = []
     yollar = ['/firmalar', '/firma-listesi', '/firmalar/', '/uye-firmalar',
-              '/rehber', '/firma-rehberi', '/uyeler', '/firmalar.html']
+              '/rehber', '/firma-rehberi', '/uyeler', '/firmalar.html',
+              '/tr/firmalar', '/firma_listesi']
 
     for yol in yollar:
         try:
@@ -94,7 +179,7 @@ def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=50):
     return firmalar[:limit]
 
 
-def firmalar_cek_ergene(osb_ad, sehir, limit=50):
+def firmalar_cek_ergene(osb_ad, sehir, limit=100):
     osb_siteleri = {
         'ergene': 'https://www.ergene1osb.org/firmarehberi/',
         'tuzla': 'https://www.itosb.org.tr/firmalar',
@@ -157,6 +242,43 @@ Sadece JSON döndür:
         return []
 
 
+def claude_firma_listesi(sehir, osb_ad, haric_listesi, adet, api_key):
+    """
+    Claude'dan SADECE firma adı + website ister.
+    haric_listesi: daha önce çekilen firma adları — bunları tekrar verme.
+    """
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Claude'a gönderilecek "hariç" listesini kısalt (token tasarrufu)
+    haric_str = json.dumps(haric_listesi[:100], ensure_ascii=False)
+
+    r = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4000,
+        messages=[{"role": "user", "content": f"""
+{sehir} şehrindeki {osb_ad} içinde faaliyet gösteren firmaları listele.
+ZORUNLU KURAL: Aşağıdaki firmaları KESİNLİKLE tekrar verme, bunlar zaten listemde var:
+{haric_str}
+
+{adet} FARKLI ve YENİ firma ver. Telefon veya email YAZMA.
+Sadece gerçek firma adları ve varsa websiteleri.
+
+Sadece JSON döndür, başka hiçbir şey yazma:
+{{"firmalar":[{{"ad":"Firma Adı A.Ş.","website":"www.firma.com.tr","sektor":"Tekstil"}}]}}
+"""}]
+    )
+    try:
+        text = r.content[0].text
+        clean = text[text.find('{'):text.rfind('}')+1]
+        firmalar = json.loads(clean).get('firmalar', [])
+        # Ekstra güvenlik: hariç listesindeki firmalar gelirse çıkar
+        haric_set = set(h.lower().strip() for h in haric_listesi)
+        firmalar = [f for f in firmalar if f.get('ad','').lower().strip() not in haric_set]
+        return firmalar
+    except:
+        return []
+
+
 # ============ SIDEBAR ============
 with st.sidebar:
     st.markdown("### ⚙️ Ayarlar")
@@ -204,7 +326,7 @@ if st.session_state.adim == 1:
         with st.spinner(f"{sehir_input} OSB'leri aranıyor..."):
             osblar = claude_osb_listesi(sehir_input, api_key)
             if not osblar:
-                osblar = [{"id": 0, "ad": f"{sehir_input} OSB", "website": None, "ilce": "Merkez", "firma_sayisi": 100}]
+                osblar = [{"id": 0, "ad": f"{sehir_input} OSB", "website": None, "ilce": "Merkez", "firma_sayisi": 200}]
 
         st.session_state.sehir = sehir_input
         st.session_state.osblar = osblar
@@ -243,7 +365,7 @@ elif st.session_state.adim == 2:
 elif st.session_state.adim == 3:
     st.markdown('<div class="step-badge">ADIM 3 / 4</div>', unsafe_allow_html=True)
     osb = st.session_state.secili_osb
-    toplam = osb.get('firma_sayisi') or 100
+    toplam = osb.get('firma_sayisi') or 200
 
     st.markdown(f"### 🔍 {osb['ad']} — Firma Listesi")
 
@@ -253,79 +375,98 @@ elif st.session_state.adim == 3:
     with c2:
         st.markdown(f'<div class="stat-box"><div class="stat-val">{len(st.session_state.tum_firmalar)}</div><div class="stat-label">Listelenen</div></div>', unsafe_allow_html=True)
     with c3:
-        st.markdown(f'<div class="stat-box"><div class="stat-val">{max(0, toplam - len(st.session_state.tum_firmalar))}</div><div class="stat-label">Kalan</div></div>', unsafe_allow_html=True)
+        kalan = max(0, toplam - len(st.session_state.tum_firmalar))
+        st.markdown(f'<div class="stat-box"><div class="stat-val">{kalan}</div><div class="stat-label">Kalan</div></div>', unsafe_allow_html=True)
 
     st.markdown("")
-    adet = st.slider("Kaç firma listeleyelim?", 10, 100, 10, 10)
+    adet = st.slider("Kaç firma listeleyelim?", 10, 1000, 50, 10)
 
     if st.button(f"📋 {adet} Firma Listele", type="primary", use_container_width=True):
         yeni_firmalar = []
         osb_website = osb.get('website', '')
 
-        with st.spinner("Gerçek veriler çekiliyor..."):
+        # Mevcut firma adları — bunları tekrar çekme
+        mevcut_adlar = list(st.session_state.gosterilen_ids)
 
+        with st.spinner("Veriler çekiliyor..."):
+
+            # 1. OSB'nin kendi sitesinden dene
             if osb_website:
                 with st.status(f"🌐 {osb_website} taranıyor..."):
-                    yeni_firmalar = firmalar_cek_osb_sitesi(osb_website, osb['ad'], limit=adet)
-                    st.write(f"→ {len(yeni_firmalar)} firma bulundu")
+                    tum = firmalar_cek_osb_sitesi(osb_website, osb['ad'], limit=adet + len(mevcut_adlar))
+                    # Daha önce çekilenleri çıkar
+                    mevcut_set = set(a.lower().strip() for a in mevcut_adlar)
+                    yeni_firmalar = [f for f in tum if f['ad'].lower().strip() not in mevcut_set]
+                    yeni_firmalar = yeni_firmalar[:adet]
+                    st.write(f"→ {len(yeni_firmalar)} yeni firma bulundu")
 
+            # 2. Bilinen OSB sitelerini dene
             if not yeni_firmalar:
                 with st.status("🔍 Bilinen OSB siteleri taranıyor..."):
-                    yeni_firmalar = firmalar_cek_ergene(osb['ad'], st.session_state.sehir, limit=adet)
-                    st.write(f"→ {len(yeni_firmalar)} firma bulundu")
+                    tum = firmalar_cek_ergene(osb['ad'], st.session_state.sehir, limit=adet + len(mevcut_adlar))
+                    mevcut_set = set(a.lower().strip() for a in mevcut_adlar)
+                    yeni_firmalar = [f for f in tum if f['ad'].lower().strip() not in mevcut_set]
+                    yeni_firmalar = yeni_firmalar[:adet]
+                    st.write(f"→ {len(yeni_firmalar)} yeni firma bulundu")
 
+            # 3. Claude ile liste oluştur
             if not yeni_firmalar and api_key:
-                with st.status("🤖 Claude ile liste oluşturuluyor..."):
-                    client = anthropic.Anthropic(api_key=api_key)
-                    haric = json.dumps([f['ad'] for f in st.session_state.tum_firmalar[:30]], ensure_ascii=False)
-                    r = client.messages.create(
-                        model="claude-haiku-4-5-20251001",
-                        max_tokens=3000,
-                        messages=[{"role": "user", "content": f"""
-{st.session_state.sehir} {osb['ad']} firmalarını listele.
-Bunları ÇIKARMA: {haric}
-{adet} farklı firma. JSON döndür:
-{{"firmalar":[{{"ad":"...","website":"...","email":"...","telefon":"...","sektor":"..."}}]}}
-"""}]
+                with st.status("🤖 Claude ile yeni firmalar oluşturuluyor..."):
+                    yeni_firmalar = claude_firma_listesi(
+                        st.session_state.sehir,
+                        osb['ad'],
+                        mevcut_adlar,   # ← mevcut tüm firma adlarını gönder
+                        adet,
+                        api_key
                     )
-                    try:
-                        text = r.content[0].text
-                        clean = text[text.find('{'):text.rfind('}')+1]
-                        yeni_firmalar = json.loads(clean).get('firmalar', [])
-                    except:
-                        yeni_firmalar = []
-                    st.write(f"→ {len(yeni_firmalar)} firma oluşturuldu")
+                    st.write(f"→ {len(yeni_firmalar)} yeni firma listelendi")
 
+            # 4. Her firmanın sitesinden iletişim bilgisi çek
+            if yeni_firmalar:
+                with st.status("📞 İletişim bilgileri çekiliyor (telefon, email, WhatsApp)..."):
+                    for i, f in enumerate(yeni_firmalar):
+                        web = f.get('website', '')
+                        if web:
+                            st.write(f"🔍 [{i+1}/{len(yeni_firmalar)}] {f['ad']}...")
+                            iletisim = iletisim_sayfasindan_cek(web)
+                            f.update(iletisim)
+                    st.write("✅ Tamamlandı")
+
+        # Tekrar kontrolü yaparak ekle
         eklenen = 0
         for f in yeni_firmalar:
-            if f.get('ad') and f['ad'] not in st.session_state.gosterilen_ids:
+            ad = f.get('ad', '').strip()
+            if ad and ad not in st.session_state.gosterilen_ids:
                 f.setdefault('osb', osb['ad'])
                 f.setdefault('sehir', st.session_state.sehir)
                 st.session_state.tum_firmalar.append(f)
-                st.session_state.gosterilen_ids.add(f['ad'])
+                st.session_state.gosterilen_ids.add(ad)
                 eklenen += 1
 
         if eklenen:
-            st.success(f"✅ {eklenen} yeni firma eklendi!")
+            st.success(f"✅ {eklenen} yeni firma eklendi! Toplam: {len(st.session_state.tum_firmalar)}")
         else:
             st.warning("Yeni firma bulunamadı.")
         st.rerun()
 
+    # Firma listesi göster
     if st.session_state.tum_firmalar:
         st.markdown("---")
         st.markdown(f"**📋 {len(st.session_state.tum_firmalar)} Firma**")
         for f in st.session_state.tum_firmalar:
             email = f.get('email', '')
             tel = f.get('telefon', '')
+            wa = f.get('whatsapp', '')
             if email and tel:
                 renk, durum = "#E1F5EE", "✅"
-            elif email or tel:
+            elif email or tel or wa:
                 renk, durum = "#FAEEDA", "⚠️"
             else:
                 renk, durum = "#FCEBEB", "❌"
+            wa_html = f" &nbsp;|&nbsp; 💬 {wa}" if wa else ""
             st.markdown(f"""
             <div style="background:{renk};border-radius:6px;padding:10px 14px;margin-bottom:6px;font-size:13px;">
-                {durum} <strong>{f['ad']}</strong> &nbsp;|&nbsp; 📧 {email or '—'} &nbsp;|&nbsp; 📞 {tel or '—'} &nbsp;|&nbsp; 🌐 {f.get('website','—')}
+                {durum} <strong>{f['ad']}</strong> &nbsp;|&nbsp; 📧 {email or '—'} &nbsp;|&nbsp; 📞 {tel or '—'}{wa_html} &nbsp;|&nbsp; 🌐 {f.get('website','—')}
             </div>""", unsafe_allow_html=True)
 
         col_x, col_y = st.columns(2)
@@ -347,7 +488,8 @@ elif st.session_state.adim == 4:
     ws = wb.active
     ws.title = f"{st.session_state.sehir} OSB"
 
-    for col, b in enumerate(["#","Firma Adı","OSB","Sektör","Web Sitesi","Email","Telefon","Durum"], 1):
+    basliklar = ["#", "Firma Adı", "OSB", "Sektör", "Web Sitesi", "Email", "Telefon", "WhatsApp", "Durum"]
+    for col, b in enumerate(basliklar, 1):
         h = ws.cell(row=1, column=col, value=b)
         h.font = openpyxl.styles.Font(bold=True, color="FFFFFF")
         h.fill = openpyxl.styles.PatternFill("solid", fgColor="1F4E79")
@@ -357,27 +499,37 @@ elif st.session_state.adim == 4:
     for row, f in enumerate(firmalar, 2):
         email = f.get('email', '')
         tel = f.get('telefon', '')
+        wa = f.get('whatsapp', '')
         if email and tel:
-            durum, renk, tam = "✅ Tam", "E1F5EE", tam+1
-        elif email or tel:
-            durum, renk, kismi = "⚠️ Kısmi", "FAEEDA", kismi+1
+            durum, renk, tam = "✅ Tam", "E1F5EE", tam + 1
+        elif email or tel or wa:
+            durum, renk, kismi = "⚠️ Kısmi", "FAEEDA", kismi + 1
         else:
-            durum, renk, eksik_count = "❌ Manuel", "FCEBEB", eksik_count+1
+            durum, renk, eksik_count = "❌ Manuel", "FCEBEB", eksik_count + 1
 
-        for col, val in enumerate([row-1, f.get('ad',''), f.get('osb',''), f.get('sektor',''), f.get('website',''), email, tel], 1):
+        degerler = [row-1, f.get('ad',''), f.get('osb',''), f.get('sektor',''),
+                    f.get('website',''), email, tel, wa]
+        for col, val in enumerate(degerler, 1):
             ws.cell(row=row, column=col, value=val)
-        d = ws.cell(row=row, column=8, value=durum)
+        d = ws.cell(row=row, column=9, value=durum)
         d.fill = openpyxl.styles.PatternFill("solid", fgColor=renk)
 
     for col in ws.columns:
-        ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or '')) for c in col) + 4, 35)
+        ws.column_dimensions[col[0].column_letter].width = min(
+            max(len(str(c.value or '')) for c in col) + 4, 40
+        )
 
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
 
     c1, c2, c3, c4 = st.columns(4)
-    for c, v, l, renk in [(c1,len(firmalar),"Toplam","#1F4E79"),(c2,tam,"✅ Tam","#1a7a4a"),(c3,kismi,"⚠️ Kısmi","#BA7517"),(c4,eksik_count,"❌ Manuel","#c8401a")]:
+    for c, v, l, renk in [
+        (c1, len(firmalar), "Toplam", "#1F4E79"),
+        (c2, tam, "✅ Tam", "#1a7a4a"),
+        (c3, kismi, "⚠️ Kısmi", "#BA7517"),
+        (c4, eksik_count, "❌ Manuel", "#c8401a")
+    ]:
         with c:
             st.markdown(f'<div class="stat-box"><div class="stat-val" style="color:{renk}">{v}</div><div class="stat-label">{l}</div></div>', unsafe_allow_html=True)
 
