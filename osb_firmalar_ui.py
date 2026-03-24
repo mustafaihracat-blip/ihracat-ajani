@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import re
 import time
 import io
-import json
 
 # ─── SAYFA AYARLARI ───────────────────────────────────────────────────────────
 st.set_page_config(
@@ -49,10 +48,6 @@ st.markdown("""
         padding: 1rem; font-family: monospace; font-size: 0.82rem;
         max-height: 200px; overflow-y: auto;
     }
-    .strateji-badge {
-        display: inline-block; background: #d4edda; color: #155724;
-        border-radius: 20px; padding: 2px 10px; font-size: 0.78rem; font-weight: 600;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,10 +69,10 @@ def tel_bul(metin):
     return eslesmeler[0].strip() if eslesmeler else ""
 
 def url_bul(metin):
-    eslesmeler = re.findall(r"https?://[^\s"'<>]+", str(metin))
+    eslesmeler = re.findall(r"https?://[^\s\"\'<>]+", str(metin))
     return eslesmeler[0] if eslesmeler else ""
 
-# ─── STRATEJI 1: TABLO TARAMA ─────────────────────────────────────────────────
+# ─── STRATEJİ 1: TABLO TARAMA ─────────────────────────────────────────────────
 def strateji_tablo(soup):
     firmalar = []
     for tablo in soup.select("table"):
@@ -95,14 +90,14 @@ def strateji_tablo(soup):
                     firma[baslik if baslik else f"Alan{i+1}"] = hucreler[i] if i < len(hucreler) else ""
             else:
                 firma["Firma Adı"] = hucreler[0]
-                firma["Sektör"]   = hucreler[1] if len(hucreler) > 1 else ""
-                firma["Telefon"]  = hucreler[2] if len(hucreler) > 2 else ""
-                firma["E-posta"]  = hucreler[3] if len(hucreler) > 3 else ""
-                firma["Adres"]    = hucreler[4] if len(hucreler) > 4 else ""
+                firma["Sektör"]    = hucreler[1] if len(hucreler) > 1 else ""
+                firma["Telefon"]   = hucreler[2] if len(hucreler) > 2 else ""
+                firma["E-posta"]   = hucreler[3] if len(hucreler) > 3 else ""
+                firma["Adres"]     = hucreler[4] if len(hucreler) > 4 else ""
             firmalar.append(firma)
     return firmalar
 
-# ─── STRATEJI 2: KART / LİSTE TARAMA ─────────────────────────────────────────
+# ─── STRATEJİ 2: KART / LİSTE TARAMA ─────────────────────────────────────────
 KART_SELECTORS = [
     ".firma", ".company", ".member", ".uye", ".uye-firma",
     ".card", ".liste-item", ".item", "article", ".post",
@@ -110,7 +105,7 @@ KART_SELECTORS = [
     "[class*=uye]", "[class*=card]"
 ]
 
-def strateji_kart(soup, html_str):
+def strateji_kart(soup):
     firmalar = []
     for sel in KART_SELECTORS:
         kartlar = soup.select(sel)
@@ -122,11 +117,11 @@ def strateji_kart(soup, html_str):
                 continue
             baslik = kart.select_one("h1,h2,h3,h4,h5,strong,b,a")
             firma = {
-                "Firma Adı": temizle(baslik.get_text()) if baslik else tam_metin[:60],
-                "E-posta":   email_bul(str(kart)),
-                "Telefon":   tel_bul(tam_metin),
-                "Web Sitesi":url_bul(str(kart)),
-                "Ham Metin": tam_metin[:200],
+                "Firma Adı":  temizle(baslik.get_text()) if baslik else tam_metin[:60],
+                "E-posta":    email_bul(str(kart)),
+                "Telefon":    tel_bul(tam_metin),
+                "Web Sitesi": url_bul(str(kart)),
+                "Ham Metin":  tam_metin[:200],
             }
             if firma["Firma Adı"]:
                 firmalar.append(firma)
@@ -134,15 +129,11 @@ def strateji_kart(soup, html_str):
             return firmalar
     return firmalar
 
-# ─── STRATEJI 3: AKILLİ REGEX TARAMA ─────────────────────────────────────────
-def strateji_regex(html_str):
-    """Tüm HTML üzerinde e-posta, telefon ve çevre metni toplar"""
+# ─── STRATEJİ 3: REGEX / MAILTO TARAMA ───────────────────────────────────────
+def strateji_regex(soup):
     firmalar = []
-    soup = BeautifulSoup(html_str, "html.parser")
-    
-    # Tüm bağlantılı elementleri tara
     for a in soup.select("a[href^=mailto]"):
-        eposta = a["href"].replace("mailto:", "").split("?")[0].strip()
+        eposta  = a["href"].replace("mailto:", "").split("?")[0].strip()
         ebeveyn = a.find_parent(["li", "div", "tr", "td", "section", "article"])
         metin   = temizle(ebeveyn.get_text()) if ebeveyn else temizle(a.get_text())
         firmalar.append({
@@ -153,93 +144,87 @@ def strateji_regex(html_str):
         })
     return firmalar
 
-# ─── SAYFA LİNKLERİ BUL ──────────────────────────────────────────────────────
+# ─── SONRAKİ SAYFALARI BUL ────────────────────────────────────────────────────
 def sonraki_sayfalar_bul(soup, base_url):
-    """Sayfalama linklerini bulur"""
     linkler = set()
     for a in soup.select("a[href]"):
-        href = a.get("href", "")
+        href  = a.get("href", "")
         metin = temizle(a.get_text()).lower()
-        # Sayfa numaraları veya "ileri" linkleri
-        if re.search(r"page[=\/]\d+|sayfa\d+|\bpage\b|sonraki|ileri|next|>", metin + href, re.I):
+        if re.search(r"page[=/\\]\d+|sayfa\d+|\bpage\b|sonraki|ileri|next|>", metin + href, re.I):
             if href.startswith("http"):
                 linkler.add(href)
             elif href.startswith("/"):
-                linkler.add(base_url.rstrip("/") + href)
+                from urllib.parse import urlparse
+                p = urlparse(base_url)
+                linkler.add(f"{p.scheme}://{p.netloc}{href}")
     return list(linkler)[:10]
 
 # ─── ANA TARAMA FONKSİYONU ────────────────────────────────────────────────────
 def osb_universal_tara(url, max_sayfa=20, gecikme=0.5):
-    tum_firmalar = []
-    loglar = []
-    ziyaret_edildi = set()
-    kuyruk = [url]
-    sayfa_no = 0
+    tum_firmalar  = []
+    loglar        = []
+    ziyaret       = set()
+    kuyruk        = [url]
+    sayfa_no      = 0
 
     while kuyruk and sayfa_no < max_sayfa:
-        mevcut_url = kuyruk.pop(0)
-        if mevcut_url in ziyaret_edildi:
+        mevcut = kuyruk.pop(0)
+        if mevcut in ziyaret:
             continue
-        ziyaret_edildi.add(mevcut_url)
+        ziyaret.add(mevcut)
         sayfa_no += 1
 
         try:
-            resp = requests.get(mevcut_url, headers=HEADERS, timeout=15)
+            resp = requests.get(mevcut, headers=HEADERS, timeout=15)
             resp.encoding = resp.apparent_encoding
             resp.raise_for_status()
         except Exception as e:
             loglar.append(f"❌ Sayfa {sayfa_no}: {e}")
             continue
 
-        soup     = BeautifulSoup(resp.text, "html.parser")
-        html_str = resp.text
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Stratejileri sırayla dene
         firmalar = strateji_tablo(soup)
         if firmalar:
-            loglar.append(f"✅ Sayfa {sayfa_no} — Tablo stratejisi → {len(firmalar)} firma")
+            loglar.append(f"✅ Sayfa {sayfa_no} — Tablo → {len(firmalar)} firma")
         else:
-            firmalar = strateji_kart(soup, html_str)
+            firmalar = strateji_kart(soup)
             if firmalar:
-                loglar.append(f"✅ Sayfa {sayfa_no} — Kart stratejisi → {len(firmalar)} firma")
+                loglar.append(f"✅ Sayfa {sayfa_no} — Kart → {len(firmalar)} firma")
             else:
-                firmalar = strateji_regex(html_str)
+                firmalar = strateji_regex(soup)
                 if firmalar:
-                    loglar.append(f"✅ Sayfa {sayfa_no} — Regex stratejisi → {len(firmalar)} firma")
+                    loglar.append(f"✅ Sayfa {sayfa_no} — Regex → {len(firmalar)} firma")
                 else:
                     loglar.append(f"⚠️ Sayfa {sayfa_no} — Veri bulunamadı")
 
-        # Kaynak URL ekle
         for f in firmalar:
-            f["Kaynak"] = mevcut_url
-
+            f["Kaynak"] = mevcut
         tum_firmalar.extend(firmalar)
 
-        # Sonraki sayfaları kuyruğa ekle (sadece ilk sayfada)
         if sayfa_no == 1:
-            yeni_sayfalar = sonraki_sayfalar_bul(soup, url)
-            for yeni in yeni_sayfalar:
-                if yeni not in ziyaret_edildi:
-                    kuyruk.append(yeni)
-            if yeni_sayfalar:
-                loglar.append(f"🔗 {len(yeni_sayfalar)} sayfa daha bulundu")
+            yeni = sonraki_sayfalar_bul(soup, url)
+            for y in yeni:
+                if y not in ziyaret:
+                    kuyruk.append(y)
+            if yeni:
+                loglar.append(f"🔗 {len(yeni)} ek sayfa kuyruğa eklendi")
 
         time.sleep(gecikme)
 
-    # Mükerrer temizle
     df = pd.DataFrame(tum_firmalar).drop_duplicates()
     return df, loglar
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
-for key in ["df_firmalar", "loglar", "tarama_bitti"]:
-    if key not in st.session_state:
-        st.session_state[key] = None if key == "df_firmalar" else ([] if key == "loglar" else False)
+if "df_firmalar"    not in st.session_state: st.session_state.df_firmalar    = None
+if "loglar"         not in st.session_state: st.session_state.loglar         = []
+if "tarama_bitti"   not in st.session_state: st.session_state.tarama_bitti   = False
 
 # ─── HERO ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero-box">
     <h1>🏭 OSB Evrensel Firma Tarayıcı</h1>
-    <p>Her OSB sitesini otomatik analiz eder • Tablo, Kart, Regex stratejileri • Sayfalama desteği</p>
+    <p>Her OSB sitesini otomatik analiz eder &nbsp;•&nbsp; Tablo / Kart / Regex stratejileri &nbsp;•&nbsp; Sayfalama desteği</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -247,15 +232,15 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## ⚙️ Tarama Ayarları")
     st.markdown("---")
-    max_sayfa  = st.slider("Maksimum Sayfa", 1, 50, 10)
-    gecikme    = st.select_slider("İstek Gecikmesi (san)", [0.2, 0.5, 1.0, 2.0], value=0.5)
+    max_sayfa = st.slider("Maksimum Sayfa", 1, 50, 10)
+    gecikme   = st.select_slider("İstek Gecikmesi (sn)", [0.2, 0.5, 1.0, 2.0], value=0.5)
     st.markdown("---")
-    st.markdown("### 📌 Stratejiler")
-    st.success("✅ Tablo Tarama")
-    st.info("🟦 Kart/Liste Tarama")
-    st.warning("🟡 Regex / E-posta Tarama")
+    st.markdown("### 📌 Strateji Sırası")
+    st.success("1️⃣ Tablo Tarama")
+    st.info("2️⃣ Kart / Liste Tarama")
+    st.warning("3️⃣ Regex / E-posta Tarama")
     st.markdown("---")
-    st.caption("Her OSB sitesinde sırayla denenir. İlk bulan strateji kullanılır.")
+    st.caption("Sırayla denenir. İlk sonuç veren strateji kullanılır.")
 
 # ─── ÇOKLU URL GİRİŞİ ────────────────────────────────────────────────────────
 st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -264,29 +249,32 @@ st.caption("Birden fazla OSB girebilirsin — her satıra bir URL")
 url_girisi = st.text_area(
     label="",
     placeholder="https://www.iosb.org.tr/uyefirmalar\nhttps://www.bosb.org.tr/firmalar\nhttps://www.aosb.org.tr/uyeler",
-    height=100,
+    height=110,
     label_visibility="collapsed"
 )
 osb_adi = st.text_input("Kayıt Adı (dosya adı için)", placeholder="istanbul_osb")
-col1, col2 = st.columns([3,1])
+col1, col2 = st.columns([3, 1])
 with col2:
     tara_btn = st.button("🚀 Tara", use_container_width=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ─── İSTATİSTİKLER ────────────────────────────────────────────────────────────
-df = st.session_state.df_firmalar
-toplam     = len(df) if df is not None else 0
-eposta_say = int(df["E-posta"].astype(bool).sum()) if df is not None and "E-posta" in df.columns else 0
-tel_say    = int(df["Telefon"].astype(bool).sum()) if df is not None and "Telefon" in df.columns else 0
-durum      = "✅ Bitti" if st.session_state.tarama_bitti else "⏳ Bekliyor"
+df_s       = st.session_state.df_firmalar
+toplam     = len(df_s) if df_s is not None else 0
+eposta_say = int(df_s["E-posta"].astype(bool).sum()) if df_s is not None and "E-posta" in df_s.columns else 0
+tel_say    = int(df_s["Telefon"].astype(bool).sum())  if df_s is not None and "Telefon" in df_s.columns else 0
+durum_txt  = "✅ Tamamlandı" if st.session_state.tarama_bitti else "⏳ Bekliyor"
 
 c1, c2, c3, c4 = st.columns(4)
-for col, num, lbl in zip([c1,c2,c3,c4],
-                          [toplam, eposta_say, tel_say, durum],
-                          ["Toplam Firma","E-posta Bulunan","Telefon Bulunan","Durum"]):
+for col, num, lbl in zip(
+    [c1, c2, c3, c4],
+    [toplam, eposta_say, tel_say, durum_txt],
+    ["Toplam Firma", "E-posta Bulunan", "Telefon Bulunan", "Durum"]
+):
     with col:
+        boyut = "1.2rem" if isinstance(num, str) else "2rem"
         st.markdown(f"""<div class="stat-box">
-            <div class="stat-number" style="font-size:{'1.2rem' if isinstance(num,str) else '2rem'}">{num}</div>
+            <div class="stat-number" style="font-size:{boyut}">{num}</div>
             <div class="stat-label">{lbl}</div></div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -297,59 +285,52 @@ if tara_btn:
     if not url_listesi:
         st.warning("⚠️ En az bir URL girin!")
     else:
-        st.session_state.df_firmalar = None
-        st.session_state.loglar      = []
+        st.session_state.df_firmalar  = None
+        st.session_state.loglar       = []
         st.session_state.tarama_bitti = False
 
         durum_kutusu = st.empty()
         log_kutusu   = st.empty()
         progress     = st.progress(0)
-        
-        tum_df_listesi = []
-        
+        tum_df       = []
+
         for i, url in enumerate(url_listesi):
             durum_kutusu.info(f"🌐 Taranıyor ({i+1}/{len(url_listesi)}): {url}")
-            
             try:
                 df_tek, loglar = osb_universal_tara(url, max_sayfa=max_sayfa, gecikme=gecikme)
-                tum_df_listesi.append(df_tek)
+                tum_df.append(df_tek)
                 st.session_state.loglar.extend(loglar)
             except Exception as e:
                 st.session_state.loglar.append(f"❌ {url}: {e}")
-            
-            progress.progress((i+1) / len(url_listesi))
-            log_icerik = "\n".join(st.session_state.loglar[-12:])
-            log_kutusu.markdown(f"<div class=\'log-box\'>{log_icerik}</div>", unsafe_allow_html=True)
+            progress.progress((i + 1) / len(url_listesi))
+            log_kutusu.code("\n".join(st.session_state.loglar[-12:]))
 
-        if tum_df_listesi:
-            st.session_state.df_firmalar = pd.concat(tum_df_listesi, ignore_index=True)
+        if tum_df:
+            st.session_state.df_firmalar  = pd.concat(tum_df, ignore_index=True)
             st.session_state.tarama_bitti = True
             n = len(st.session_state.df_firmalar)
-            durum_kutusu.success(f"🎉 Tarama tamamlandı! **{n} firma** toplandı.")
+            durum_kutusu.success(f"🎉 Tamamlandı! **{n} firma** toplandı.")
         else:
             durum_kutusu.error("❌ Hiçbir siteden veri çekilemedi.")
-        
         st.rerun()
 
 # ─── LOG GÖSTERİMİ ────────────────────────────────────────────────────────────
 if st.session_state.loglar:
     with st.expander("📋 Tarama Logları", expanded=False):
-        log_metni = "\n".join(st.session_state.loglar)
-        st.code(log_metni, language=None)
+        st.code("\n".join(st.session_state.loglar), language=None)
 
 # ─── SONUÇ TABLOSU ────────────────────────────────────────────────────────────
 if st.session_state.df_firmalar is not None and len(st.session_state.df_firmalar) > 0:
     df = st.session_state.df_firmalar.copy()
-    
+
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### 📊 Firma Listesi")
-    
+
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
         arama = st.text_input("🔍 Ara...", placeholder="Firma adı veya keyword")
     with col2:
-        sutunlar = list(df.columns)
-        sektor_sutun = next((s for s in sutunlar if "sekt" in s.lower()), None)
+        sektor_sutun = next((s for s in df.columns if "sekt" in s.lower()), None)
         if sektor_sutun:
             sektorler = ["Tümü"] + sorted(df[sektor_sutun].dropna().unique().tolist())
             secili = st.selectbox("Sektör", sektorler)
@@ -381,12 +362,15 @@ if st.session_state.df_firmalar is not None and len(st.session_state.df_firmalar
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as w:
             df.to_excel(w, index=False, sheet_name="Firmalar")
-        st.download_button("📥 Excel İndir", buf.getvalue(), f"{ad}.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button(
+            "📥 Excel İndir", buf.getvalue(), f"{ad}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
     with c3:
         if st.button("🗑️ Temizle", use_container_width=True):
-            st.session_state.df_firmalar = None
-            st.session_state.loglar      = []
+            st.session_state.df_firmalar  = None
+            st.session_state.loglar       = []
             st.session_state.tarama_bitti = False
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
