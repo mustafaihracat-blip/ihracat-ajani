@@ -37,7 +37,6 @@ for key, val in [('adim',1),('sehir',''),('osblar',[]),('secili_osb',None),('tum
 
 
 def extract_contact(text):
-    """Metinden email, telefon, website çıkar"""
     email = re.search(r'[\w\.\-]+@[\w\.\-]+\.\w{2,}', text)
     tel = re.search(r'0[\s\-\(\)]?\d{3}[\s\-\(\)]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', text)
     web = re.search(r'https?://[^\s<>"]+|www\.[^\s<>"]+', text)
@@ -49,7 +48,6 @@ def extract_contact(text):
 
 
 def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=50):
-    """OSB'nin resmi sitesinden firma listesini çeker"""
     firmalar = []
     yollar = ['/firmalar', '/firma-listesi', '/firmalar/', '/uye-firmalar',
               '/rehber', '/firma-rehberi', '/uyeler', '/firmalar.html']
@@ -62,7 +60,6 @@ def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=50):
                 continue
             soup = BeautifulSoup(r.text, 'html.parser')
 
-            # Tablo tabanlı
             for table in soup.find_all('table'):
                 for row in table.find_all('tr')[1:]:
                     cols = row.find_all(['td', 'th'])
@@ -78,7 +75,6 @@ def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=50):
                     if ad not in [f['ad'] for f in firmalar]:
                         firmalar.append(firma)
 
-            # Div/li tabanlı
             if not firmalar:
                 for el in soup.find_all(['li', 'div', 'tr']):
                     text = el.get_text(strip=True)
@@ -99,8 +95,6 @@ def firmalar_cek_osb_sitesi(osb_website, osb_ad, limit=50):
 
 
 def firmalar_cek_ergene(osb_ad, sehir, limit=50):
-    """ergene1osb.org tarzı OSB sitelerinden firma çeker - örnek"""
-    # Bilinen OSB sitelerinin firma sayfaları
     osb_siteleri = {
         'ergene': 'https://www.ergene1osb.org/firmarehberi/',
         'tuzla': 'https://www.itosb.org.tr/firmalar',
@@ -129,7 +123,6 @@ def firmalar_cek_ergene(osb_ad, sehir, limit=50):
 
 
 def claude_osb_listesi(sehir, api_key):
-    """Claude ile OSB listesi + websiteleri al"""
     client = anthropic.Anthropic(api_key=api_key)
     r = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -250,7 +243,8 @@ elif st.session_state.adim == 2:
 elif st.session_state.adim == 3:
     st.markdown('<div class="step-badge">ADIM 3 / 4</div>', unsafe_allow_html=True)
     osb = st.session_state.secili_osb
-toplam = osb.get('firma_sayisi') or 100
+    toplam = osb.get('firma_sayisi') or 100
+
     st.markdown(f"### 🔍 {osb['ad']} — Firma Listesi")
 
     c1, c2, c3 = st.columns(3)
@@ -270,19 +264,16 @@ toplam = osb.get('firma_sayisi') or 100
 
         with st.spinner("Gerçek veriler çekiliyor..."):
 
-            # 1. OSB'nin kendi sitesinden dene
             if osb_website:
                 with st.status(f"🌐 {osb_website} taranıyor..."):
                     yeni_firmalar = firmalar_cek_osb_sitesi(osb_website, osb['ad'], limit=adet)
                     st.write(f"→ {len(yeni_firmalar)} firma bulundu")
 
-            # 2. Bilinen OSB sitelerini dene
             if not yeni_firmalar:
                 with st.status("🔍 Bilinen OSB siteleri taranıyor..."):
                     yeni_firmalar = firmalar_cek_ergene(osb['ad'], st.session_state.sehir, limit=adet)
                     st.write(f"→ {len(yeni_firmalar)} firma bulundu")
 
-            # 3. Son çare: Claude
             if not yeni_firmalar and api_key:
                 with st.status("🤖 Claude ile liste oluşturuluyor..."):
                     client = anthropic.Anthropic(api_key=api_key)
@@ -305,7 +296,6 @@ Bunları ÇIKARMA: {haric}
                         yeni_firmalar = []
                     st.write(f"→ {len(yeni_firmalar)} firma oluşturuldu")
 
-        # Ekle
         eklenen = 0
         for f in yeni_firmalar:
             if f.get('ad') and f['ad'] not in st.session_state.gosterilen_ids:
@@ -321,7 +311,6 @@ Bunları ÇIKARMA: {haric}
             st.warning("Yeni firma bulunamadı.")
         st.rerun()
 
-    # Firma listesi göster
     if st.session_state.tum_firmalar:
         st.markdown("---")
         st.markdown(f"**📋 {len(st.session_state.tum_firmalar)} Firma**")
