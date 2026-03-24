@@ -1,0 +1,5 @@
+{
+  "total_leads": 5711,
+  "last_update": "24.03.2026",
+  "ai_strategy": "Nijerya'da 8504 kodu için kamu projeleri ve DISCO ihaleleri öncelikli fırsattır."
+}

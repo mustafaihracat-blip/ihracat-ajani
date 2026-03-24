@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Megates Enerji — Nijerya Pazar Paneli</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',sans-serif; background:#0f1923; color:#e0e0e0; }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    position:fixed; left:0; top:0; width:220px; height:100vh;
+    background:#0a1016; border-right:1px solid #1e3a5f;
+    display:flex; flex-direction:column; z-index:100;
+  }
+  .logo { padding:24px 20px 20px; border-bottom:1px solid #1e3a5f; }
+  .logo h2 { color:#f0b429; font-size:17px; font-weight:700; }
+  .logo p  { color:#7a9bb5; font-size:11px; margin-top:4px; }
+  .nav { padding:16px 0; flex:1; }
+  .nav a {
+    display:flex; align-items:center; gap:10px;
+    padding:11px 20px; color:#8ab0cc; font-size:13px;
+    text-decoration:none; transition:.2s; cursor:pointer;
+    border-left:3px solid transparent;
+  }
+  .nav a:hover, .nav a.active {
+    color:#fff; background:#1a2d40; border-left-color:#f0b429;
+  }
+  .nav a span.icon { font-size:16px; }
+  .sidebar-footer { padding:16px 20px; border-top:1px solid #1e3a5f; }
+  .sidebar-footer p { color:#4a6d8c; font-size:11px; }
+
+  /* ── MAIN ── */
+  .main { margin-left:220px; min-height:100vh; }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    background:#0a1016; border-bottom:1px solid #1e3a5f;
+    padding:16px 32px; display:flex; align-items:center;
+    justify-content:space-between; position:sticky; top:0; z-index:90;
+  }
+  .topbar h1 { font-size:18px; color:#fff; font-weight:600; }
+  .topbar .badge {
+    background:#1a3a5c; color:#7ec8e3; font-size:11px;
+    padding:4px 12px; border-radius:20px; border:1px solid #2a5a8c;
+  }
+
+  /* ── PAGE ── */
+  .page { display:none; padding:32px; }
+  .page.active { display:block; }
+
+  /* ── STAT CARDS ── */
+  .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; margin-bottom:32px; }
+  .stat-card {
+    background:#0a1a2a; border:1px solid #1e3a5f; border-radius:12px;
+    padding:22px 24px; position:relative; overflow:hidden;
+  }
+  .stat-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  }
+  .stat-card.red::before   { background:#e74c3c; }
+  .stat-card.blue::before  { background:#2980b9; }
+  .stat-card.green::before { background:#27ae60; }
+  .stat-card.gold::before  { background:#f0b429; }
+  .stat-card .label { font-size:11px; color:#7a9bb5; text-transform:uppercase; letter-spacing:.8px; }
+  .stat-card .value { font-size:34px; font-weight:700; margin:8px 0 4px; color:#fff; }
+  .stat-card .sub   { font-size:12px; color:#4a8a6c; }
+  .stat-card .icon  { position:absolute; right:20px; top:50%; transform:translateY(-50%); font-size:36px; opacity:.15; }
+
+  /* ── SECTION TITLE ── */
+  .section-title { font-size:14px; color:#7a9bb5; text-transform:uppercase;
+    letter-spacing:.8px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .section-title::after { content:''; flex:1; height:1px; background:#1e3a5f; }
+
+  /* ── CHARTS ROW ── */
+  .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:32px; }
+  .chart-card {
+    background:#0a1a2a; border:1px solid #1e3a5f; border-radius:12px; padding:24px;
+  }
+  .chart-card h3 { font-size:13px; color:#aac8e0; margin-bottom:18px; font-weight:600; }
+  .chart-wrap { position:relative; height:220px; }
+
+  /* ── INFO CARDS ── */
+  .info-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:32px; }
+  .info-card {
+    background:#0a1a2a; border:1px solid #1e3a5f; border-radius:12px; padding:20px;
+  }
+  .info-card h3 { font-size:13px; color:#f0b429; margin-bottom:14px; font-weight:600; }
+  .info-item { display:flex; align-items:flex-start; gap:8px; margin-bottom:10px; }
+  .info-item .dot { width:7px; height:7px; border-radius:50%; background:#2980b9;
+    margin-top:5px; flex-shrink:0; }
+  .info-item p { font-size:12.5px; color:#aac8e0; line-height:1.5; }
+
+  /* ── PRIORITY TABLE ── */
+  .table-card {
+    background:#0a1a2a; border:1px solid #1e3a5f; border-radius:12px;
+    padding:24px; margin-bottom:32px;
+  }
+  .table-card h3 { font-size:13px; color:#aac8e0; margin-bottom:18px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; color:#4a7a9c; text-transform:uppercase;
+    letter-spacing:.6px; padding:10px 14px; border-bottom:1px solid #1e3a5f; }
+  td { padding:11px 14px; font-size:13px; color:#c0d8ec; border-bottom:1px solid #111e2a; }
+  tr:hover td { background:#0d2035; }
+  .badge-sector {
+    display:inline-block; padding:3px 10px; border-radius:20px;
+    font-size:11px; font-weight:600;
+  }
+  .bs-red    { background:#2d0d0d; color:#e74c3c; border:1px solid #5a1a1a; }
+  .bs-blue   { background:#0d1e2d; color:#2980b9; border:1px solid #1a3a5c; }
+  .bs-green  { background:#0d2d1a; color:#27ae60; border:1px solid #1a5c2a; }
+  .bs-gold   { background:#2d1e00; color:#f0b429; border:1px solid #5c3a00; }
+  .bs-purple { background:#1a0d2d; color:#9b59b6; border:1px solid #3a1a5c; }
+  .priority { color:#f0b429; font-size:14px; letter-spacing:-1px; }
+
+  /* ── MARKET PROGRESS ── */
+  .market-row { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:32px; }
+  .progress-item { margin-bottom:14px; }
+  .progress-label { display:flex; justify-content:space-between; margin-bottom:5px; }
+  .progress-label span:first-child { font-size:12.5px; color:#aac8e0; }
+  .progress-label span:last-child  { font-size:12px; color:#f0b429; font-weight:600; }
+  .progress-bar { height:7px; background:#1a2d40; border-radius:4px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:4px; transition:width 1.2s ease; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="logo">
+    <h2>MEGATES ENERJİ</h2>
+    <p>Nijerya Pazar Paneli</p>
+  </div>
+  <nav class="nav">
+    <a class="active" onclick="showPage('overview',this)">
+      <span class="icon">📊</span> Genel Bakış
+    </a>
+    <a onclick="showPage('hscode',this)">
+      <span class="icon">🔢</span> HS Kodları
+    </a>
+    <a onclick="showPage('documents',this)">
+      <span class="icon">📋</span> İthalat Evrakları
+    </a>
+    <a onclick="showPage('sectors',this)">
+      <span class="icon">🏭</span> Sektörler
+    </a>
+    <a onclick="showPage('cities',this)">
+      <span class="icon">🏙️</span> Şehir Bazlı
+    </a>
+    <a onclick="showPage('leads',this)">
+      <span class="icon">🎯</span> Lead Listesi
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <p>Güncelleme: Mart 2025</p>
+    <p style="margin-top:4px;color:#2a4a6c;">Megates © 2025</p>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <h1 id="page-title">Genel Bakış — Nijerya Pazar İstihbarat Paneli</h1>
+    <span class="badge">🇳🇬 Nijerya · 2025</span>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       SAYFA 1 — GENEL BAKIŞ
+  ════════════════════════════════════════════ -->
+  <div class="page active" id="page-overview">
+    <div style="padding:0;">
+
+      <!-- STAT CARDS -->
+      <div class="stat-grid">
+        <div class="stat-card red">
+          <div class="label">Toplam Potansiyel Alıcı</div>
+          <div class="value">5,711</div>
+          <div class="sub">↑ Tüm sektörler dahil</div>
+          <div class="icon">🏢</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="label">Aktif WB / AfDB Projesi</div>
+          <div class="value">$4.5B</div>
+          <div class="sub">9 aktif enerji projesi</div>
+          <div class="icon">💰</div>
+        </div>
+        <div class="stat-card green">
+          <div class="label">Öncelikli Şirket</div>
+          <div class="value">32</div>
+          <div class="sub">⭐⭐⭐⭐⭐ puanlı</div>
+          <div class="icon">⭐</div>
+        </div>
+        <div class="stat-card gold">
+          <div class="label">Hedef Şehir</div>
+          <div class="value">8</div>
+          <div class="sub">Lagos, Abuja, P.Harcourt...</div>
+          <div class="icon">🏙️</div>
+        </div>
+      </div>
+
+      <!-- CHARTS -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3>Sektöre Göre Potansiyel Alıcı Dağılımı</h3>
+          <div class="chart-wrap">
+            <canvas id="chartSector"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Şehre Göre Lead Dağılımı</h3>
+          <div class="chart-wrap">
+            <canvas id="chartCity"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- MARKET OPPORTUNITY -->
+      <div class="market-row">
+        <div class="chart-card">
+          <h3>Ürün Bazlı Pazar Fırsatı (Talep Skoru)</h3>
+          <div style="margin-top:8px;">
+            <div class="progress-item">
+              <div class="progress-label"><span>Trafo Köşkü (Monoblock Beton)</span><span>95%</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:95%;background:#e74c3c;"></div></div>
+            </div>
+            <div class="progress-item">
+              <div class="progress-label"><span>Metal Mahvazkı Modüler Hücre</span><span>88%</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:88%;background:#2980b9;"></div></div>
+            </div>
+            <div class="progress-item">
+              <div class="progress-label"><span>SF6 Devre Kesici</span><span>82%</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:82%;background:#27ae60;"></div></div>
+            </div>
+            <div class="progress-item">
+              <div class="progress-label"><span>SF6 Yük Ayırıcı</span><span>75%</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:75%;background:#f0b429;"></div></div>
+            </div>
+            <div class="progress-item">
+              <div class="progress-label"><span>Alçak Gerilim Kontrol Panosu</span><span>70%</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:70%;background:#9b59b6;"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>6 Aylık Hedef Takvimi</h3>
+          <div class="chart-wrap">
+            <canvas id="chartTimeline"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- INFO CARDS -->
+      <div class="section-title">Pazar Özeti</div>
+      <div class="info-row">
+        <div class="info-card">
+          <h3>🇳🇬 Nijerya Enerji Sektörü</h3>
+          <div class="info-item"><div class="dot"></div><p>Afrika'nın en büyük ekonomisi (GDP $477B)</p></div>
+          <div class="info-item"><div class="dot"></div><p>200M+ nüfus — elektriğe erişim sadece %55</p></div>
+          <div class="info-item"><div class="dot"></div><p>Hükümet hedefi: 2030'a kadar %75 erişim</p></div>
+          <div class="info-item"><div class="dot"></div><p>11 özel DISCO, 1 TCN, 26+ GENCO aktif</p></div>
+          <div class="info-item"><div class="dot"></div><p>Yıllık elektrik ekipmanı ithalatı: $2B+</p></div>
+        </div>
+        <div class="info-card">
+          <h3>💡 Megates İçin Neden Nijerya?</h3>
+          <div class="info-item"><div class="dot" style="background:#27ae60;"></div><p>World Bank $4.5B aktif enerji yatırımı</p></div>
+          <div class="info-item"><div class="dot" style="background:#27ae60;"></div><p>Trafo köşkü HS 8537 — yüksek ithalat hacmi</p></div>
+          <div class="info-item"><div class="dot" style="background:#27ae60;"></div><p>Türkiye'den rekabetçi fiyat avantajı var</p></div>
+          <div class="info-item"><div class="dot" style="background:#27ae60;"></div><p>Yerel üretim çok az — ithalata bağımlı</p></div>
+          <div class="info-item"><div class="dot" style="background:#27ae60;"></div><p>30+ yıl deneyim güçlü rekabet avantajı</p></div>
+        </div>
+        <div class="info-card">
+          <h3>⚡ Rakip Analizi</h3>
+          <div class="info-item"><div class="dot" style="background:#e74c3c;"></div><p><b>Schneider Electric</b> — Pazar lideri, pahalı</p></div>
+          <div class="info-item"><div class="dot" style="background:#e74c3c;"></div><p><b>Siemens</b> — Kaliteli ama çok yüksek fiyat</p></div>
+          <div class="info-item"><div class="dot" style="background:#f0b429;"></div><p><b>Çin firmaları</b> — Ucuz ama kalite sorunlu</p></div>
+          <div class="info-item"><div class="dot" style="background:#f0b429;"></div><p><b>Hindistan firmaları</b> — Orta segment</p></div>
+          <div class="info-item"><div class="dot" style="background:#27ae60;"></div><p><b>Megates fırsatı:</b> Avrupa kalitesi, uygun fiyat</p></div>
+        </div>
+      </div>
+
+      <!-- TOP LEADS TABLE -->
+      <div class="section-title">En Öncelikli 10 Hedef</div>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Şirket / Kurum</th>
+              <th>Sektör</th>
+              <th>Şehir</th>
+              <th>Bütçe</th>
+              <th>Öncelik</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td>Niger Delta Power Holding (NDPHC)</td><td><span class="badge-sector bs-red">Kamu Enerji</span></td><td>Abuja</td><td>$2B+</td><td class="priority">★★★★★</td></tr>
+            <tr><td>2</td><td>Transmission Company of Nigeria (TCN)</td><td><span class="badge-sector bs-blue">İletim</span></td><td>Abuja</td><td>$1.2B</td><td class="priority">★★★★★</td></tr>
+            <tr><td>3</td><td>Bureau of Public Enterprises (BPE)</td><td><span class="badge-sector bs-red">Kamu</span></td><td>Abuja</td><td>$1.2B</td><td class="priority">★★★★★</td></tr>
+            <tr><td>4</td><td>Rural Electrification Agency (REA)</td><td><span class="badge-sector bs-green">Kırsal Enerji</span></td><td>Abuja</td><td>$750M</td><td class="priority">★★★★★</td></tr>
+            <tr><td>5</td><td>Ikeja Electric (IE)</td><td><span class="badge-sector bs-blue">DISCO</span></td><td>Lagos</td><td>—</td><td class="priority">★★★★★</td></tr>
+            <tr><td>6</td><td>Eko Electricity Distribution (EKEDC)</td><td><span class="badge-sector bs-blue">DISCO</span></td><td>Lagos</td><td>—</td><td class="priority">★★★★★</td></tr>
+            <tr><td>7</td><td>Ibadan Electricity Distribution (IBEDC)</td><td><span class="badge-sector bs-blue">DISCO</span></td><td>Ibadan</td><td>—</td><td class="priority">★★★★★</td></tr>
+            <tr><td>8</td><td>Dangote Group</td><td><span class="badge-sector bs-gold">Sanayi</span></td><td>Lagos</td><td>—</td><td class="priority">★★★★★</td></tr>
+            <tr><td>9</td><td>Julius Berger Nigeria</td><td><span class="badge-sector bs-purple">EPC</span></td><td>Abuja</td><td>—</td><td class="priority">★★★★★</td></tr>
+            <tr><td>10</td><td>NBET (Nigerian Bulk Electricity Trading)</td><td><span class="badge-sector bs-blue">Enerji Ticaret</span></td><td>Abuja</td><td>$750M</td><td class="priority">★★★★</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div><!-- /page-overview -->
+
+  <!-- DİĞER SAYFALAR (şimdilik placeholder) -->
+  <div class="page" id="page-hscode">
+    <div style="text-align:center;padding:80px;color:#4a7a9c;">
+      <div style="font-size:48px;margin-bottom:16px;">🔢</div>
+      <h2 style="color:#aac8e0;">HS Kodları Sayfası</h2>
+      <p style="margin-top:8px;">Bir sonraki adımda eklenecek</p>
+    </div>
+  </div>
+  <div class="page" id="page-documents">
+    <div style="text-align:center;padding:80px;color:#4a7a9c;">
+      <div style="font-size:48px;margin-bottom:16px;">📋</div>
+      <h2 style="color:#aac8e0;">İthalat Evrakları Sayfası</h2>
+      <p style="margin-top:8px;">Bir sonraki adımda eklenecek</p>
+    </div>
+  </div>
+  <div class="page" id="page-sectors">
+    <div style="text-align:center;padding:80px;color:#4a7a9c;">
+      <div style="font-size:48px;margin-bottom:16px;">🏭</div>
+      <h2 style="color:#aac8e0;">Sektörler Sayfası</h2>
+      <p style="margin-top:8px;">Bir sonraki adımda eklenecek</p>
+    </div>
+  </div>
+  <div class="page" id="page-cities">
+    <div style="text-align:center;padding:80px;color:#4a7a9c;">
+      <div style="font-size:48px;margin-bottom:16px;">🏙️</div>
+      <h2 style="color:#aac8e0;">Şehir Bazlı Sayfası</h2>
+      <p style="margin-top:8px;">Bir sonraki adımda eklenecek</p>
+    </div>
+  </div>
+  <div class="page" id="page-leads">
+    <div style="text-align:center;padding:80px;color:#4a7a9c;">
+      <div style="font-size:48px;margin-bottom:16px;">🎯</div>
+      <h2 style="color:#aac8e0;">Lead Listesi Sayfası</h2>
+      <p style="margin-top:8px;">Bir sonraki adımda eklenecek</p>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+// ── NAVİGASYON ──────────────────────────────────
+const titles = {
+  overview:  'Genel Bakış — Nijerya Pazar İstihbarat Paneli',
+  hscode:    'HS Kodları — Megates Ürün Tarife Numaraları',
+  documents: 'İthalat Evrakları — Nijerya Gümrük Gereksinimleri',
+  sectors:   'Sektörler — Alıcı Segment Analizi',
+  cities:    'Şehir Bazlı — Coğrafi Lead Dağılımı',
+  leads:     'Lead Listesi — Filtrelenebilir Tam Liste',
+};
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  el.classList.add('active');
+  document.getElementById('page-title').textContent = titles[id];
+}
+
+// ── CHART 1: Sektör Pasta ───────────────────────
+new Chart(document.getElementById('chartSector'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Sanayi Tesisleri','EPC Müteahhitler','Petrol & Gaz','Yenilenebilir','DISCO','Kamu'],
+    datasets:[{ data:[5000,200,300,150,11,50],
+      backgroundColor:['#e74c3c','#2980b9','#1abc9c','#27ae60','#f0b429','#9b59b6'],
+      borderWidth:0, hoverOffset:8 }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{ position:'right', labels:{ color:'#aac8e0', font:{size:11}, padding:12 }},
+      tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()} şirket` }}
+    }
+  }
+});
+
+// ── CHART 2: Şehir Bar ──────────────────────────
+new Chart(document.getElementById('chartCity'), {
+  type: 'bar',
+  data: {
+    labels:['Lagos','Abuja','Port Harcourt','Ibadan','Kano','Kaduna','Enugu','Benin City'],
+    datasets:[{
+      label:'Lead Sayısı',
+      data:[2400,1800,620,340,280,210,180,160],
+      backgroundColor:['#e74c3c','#f0b429','#2980b9','#27ae60','#9b59b6','#1abc9c','#e67e22','#3498db'],
+      borderRadius:6, borderWidth:0
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false, indexAxis:'y',
+    plugins:{ legend:{display:false} },
+    scales:{
+      x:{ grid:{color:'#1a2d40'}, ticks:{color:'#7a9bb5'} },
+      y:{ grid:{display:false}, ticks:{color:'#aac8e0', font:{size:11}} }
+    }
+  }
+});
+
+// ── CHART 3: Timeline ──────────────────────────
+new Chart(document.getElementById('chartTimeline'), {
+  type:'bar',
+  data:{
+    labels:['1.Ay','2.Ay','3.Ay','4.Ay','5.Ay','6.Ay'],
+    datasets:[
+      { label:'Lead Listesi', data:[500,0,0,0,0,0], backgroundColor:'#2980b9', borderRadius:4 },
+      { label:'E-posta Gönderim', data:[0,500,0,0,0,0], backgroundColor:'#f0b429', borderRadius:4 },
+      { label:'Geri Dönüş', data:[0,0,50,0,0,0], backgroundColor:'#27ae60', borderRadius:4 },
+      { label:'Görüşme', data:[0,0,0,15,0,0], backgroundColor:'#9b59b6', borderRadius:4 },
+      { label:'Teklif', data:[0,0,0,0,5,0], backgroundColor:'#e74c3c', borderRadius:4 },
+      { label:'Satış', data:[0,0,0,0,0,2], backgroundColor:'#1abc9c', borderRadius:4 },
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ color:'#aac8e0', font:{size:10}, padding:8 }}},
+    scales:{
+      x:{ grid:{color:'#1a2d40'}, ticks:{color:'#7a9bb5'} },
+      y:{ grid:{color:'#1a2d40'}, ticks:{color:'#7a9bb5'} }
+    }
+  }
+});
+</script>
+</body>
+</html>
