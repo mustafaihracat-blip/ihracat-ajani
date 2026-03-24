@@ -250,8 +250,7 @@ elif st.session_state.adim == 2:
 elif st.session_state.adim == 3:
     st.markdown('<div class="step-badge">ADIM 3 / 4</div>', unsafe_allow_html=True)
     osb = st.session_state.secili_osb
-    toplam = osb.get('firma_sayisi', 100)
-
+toplam = osb.get('firma_sayisi') or 100
     st.markdown(f"### 🔍 {osb['ad']} — Firma Listesi")
 
     c1, c2, c3 = st.columns(3)
